@@ -976,19 +976,34 @@
             container.innerHTML = `
         <div class="setup-container">
             <h1>Ace High</h1>
-            <p>Online Multiplayer Card Game</p>
+            <p>Online Multiplayer</p>
+            <div id="error-msg" style="color: #ff4757; margin-top: 10px; font-weight: bold; min-height: 20px;"></div>
             <div class="player-select" style="flex-direction: column; align-items: center; gap: 20px;">
                 <button class="btn" id="create-room-btn">Create Room</button>
                 <div style="display: flex; gap: 10px; margin-top: 20px;">
-                    <input type="text" id="join-code" placeholder="Enter Room Code" style="padding: 15px; border-radius: 10px; border: 1px solid var(--gold); background: var(--bg-color); color: white; font-size: 1.2rem; text-transform: uppercase; width: 200px;">
+                    <input type="text" id="join-code" placeholder="Enter Room Code" style="padding: 15px; border-radius: 10px; border: 1px solid var(--gold); background: rgba(0,0,0,0.5); color: white; font-size: 1.2rem; text-transform: uppercase; width: 200px;">
                     <button class="btn" id="join-room-btn">Join</button>
                 </div>
             </div>
         </div>`;
-            container.querySelector('#create-room-btn').addEventListener('click', () => { handlers.onCreateRoom(); playSound('deal'); });
-            container.querySelector('#join-room-btn').addEventListener('click', () => {
+            container.querySelector('#create-room-btn').addEventListener('click', (e) => {
+                e.target.innerText = 'Creating...';
+                e.target.disabled = true;
+                handlers.onCreateRoom(); 
+                playSound('deal'); 
+            });
+            container.querySelector('#join-room-btn').addEventListener('click', (e) => {
                 const code = container.querySelector('#join-code').value.trim();
-                if (code) { handlers.onJoinRoom(code); playSound('deal'); }
+                const errEl = container.querySelector('#error-msg');
+                if (code) {
+                    errEl.innerText = ''; 
+                    e.target.innerText = 'Joining...';
+                    e.target.disabled = true;
+                    handlers.onJoinRoom(code); 
+                    playSound('deal'); 
+                } else {
+                    errEl.innerText = 'Please enter a valid code.';
+                }
             });
         }
 
@@ -1185,7 +1200,18 @@
             }
         };
 
-        network.onError = (err) => { alert("Network Error: " + err.message); init(); };
+        network.onError = (err) => { 
+            console.error(err);
+            init(); 
+            setTimeout(() => {
+                const errEl = document.getElementById('error-msg');
+                if (errEl) {
+                    errEl.innerText = "Network Error: " + err.message;
+                } else {
+                    alert("Network Error: " + err.message);
+                }
+            }, 100);
+        };
 
         function broadcastState() {
             if (!isHost) return;
