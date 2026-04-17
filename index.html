@@ -879,6 +879,7 @@
                 this.peer.on('connection', (conn) => {
                     this.connections.push(conn);
                     conn.on('open', () => { if (this.onPlayerJoined) this.onPlayerJoined(conn.peer); });
+                    setTimeout(() => { if (conn.open && this.onPlayerJoined) this.onPlayerJoined(conn.peer); }, 2000);
                     conn.on('data', (data) => { if (this.onMessageReceived) this.onMessageReceived(conn.peer, data); });
                     conn.on('close', () => {
                         this.connections = this.connections.filter(c => c.peer !== conn.peer);
@@ -893,9 +894,22 @@
                 this.isHost = false;
                 this.peer.on('open', (id) => {
                     this.myId = id;
-                    const conn = this.peer.connect(`acehigh-${code.toUpperCase()}`);
+                    const conn = this.peer.connect(`acehigh-${code.toUpperCase()}`, { reliable: true });
                     this.connections = [conn];
-                    conn.on('open', () => { if (onSuccess) onSuccess(); });
+                    let fired = false;
+                    const successCallback = () => {
+                        if (!fired && onSuccess) {
+                            fired = true;
+                            onSuccess();
+                        }
+                    };
+                    conn.on('open', successCallback);
+                    
+                    setTimeout(() => {
+                        if (conn.open) successCallback();
+                        else if (!fired && this.onError) this.onError(new Error("Connection timed out. Room might not exist."));
+                    }, 5000);
+
                     conn.on('data', (data) => { if (this.onMessageReceived) this.onMessageReceived(conn.peer, data); });
                     conn.on('error', (err) => { if (this.onError) this.onError(err); });
                     conn.on('close', () => { if (this.onError) this.onError(new Error("Host disconnected")); });
@@ -1172,7 +1186,10 @@
                 },
                 onJoinRoom: (code) => {
                     isHost = false;
-                    network.joinRoom(code, () => { myPeerId = network.myId; });
+                    network.joinRoom(code, () => { 
+                        myPeerId = network.myId; 
+                        network.sendToHost({ type: 'request_state' });
+                    });
                 }
             });
         }
@@ -1191,6 +1208,16 @@
                 } else if (data.type === 'play_card') {
                     const playerIndex = gameState.players.findIndex(p => p.id === peerId);
                     if (playerIndex !== -1) gameState.playCard(playerIndex, data.card);
+                } else if (data.type === 'request_state') {
+                    const playerExists = gameState.players.find(p => p.id === peerId);
+                    if (!playerExists && gameState.phase === 'lobby') {
+                        const pCount = gameState.players.length + 1;
+                        gameState.addPlayer(peerId, `Player ${pCount}`);
+                    } else {
+                        const stripped = gameState.getStrippedState(peerId);
+                        stripped.roomCode = clientState.roomCode;
+                        network.sendTo(peerId, { type: 'state_update', state: stripped });
+                    }
                 }
             } else {
                 if (data.type === 'state_update') {
